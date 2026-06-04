@@ -1,0 +1,6 @@
+{
+  "name": "RaMulab",
+  "description": "RaMulab Dark Lab Brand Portal with Game, Work, and Velkora subdomains in a Dark Lab Theme.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

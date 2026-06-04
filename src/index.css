@@ -1,0 +1,107 @@
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;0,800;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Space+Grotesk:wght@400;600;700&family=Syne:wght@700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-serif: 'Playfair Display', Georgia, serif;
+  --font-serif-cormorant: 'Cormorant Garamond', Georgia, serif;
+  --font-space-grotesk: 'Space Grotesk', sans-serif;
+  --font-syne: 'Syne', sans-serif;
+  --font-mono: 'Fira Code', monospace;
+
+  /* Custom artistic & lab science variables */
+  --color-art-copper: #c87a53;
+  --color-art-gold: #cca43b;
+  --color-art-ochre: #d4a373;
+  --color-art-teal: #1e3a3a;
+  --color-art-mist: #344e41;
+  --color-art-lavender: #5e548e;
+  --color-art-violet: #231942;
+  --color-art-emerald: #132a13;
+  --color-lab-dark-obsidian: #06070a;
+}
+
+/* Surreal canvas distortion & melting frame animation */
+@keyframes surreal-drift {
+  0% {
+    border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
+  }
+  50% {
+    border-radius: 70% 30% 50% 50% / 30% 60% 40% 70%;
+  }
+  100% {
+    border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
+  }
+}
+
+.melting-shroud {
+  animation: surreal-drift 12s ease-in-out infinite alternate;
+}
+
+/* Floating dust particles / cyberflies */
+@keyframes ambient-float {
+  0% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-15px) rotate(3deg);
+  }
+  100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+}
+
+.art-organic-float {
+  animation: ambient-float 8s ease-in-out infinite;
+}
+
+/* Monet's misty lake grid overlay */
+.art-monet-grid {
+  background-image: 
+    linear-gradient(rgba(94, 84, 142, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 58, 58, 0.05) 1px, transparent 1px);
+  background-size: 64px 64px;
+}
+
+/* Dalí's geometric desert grid overlay */
+.art-dali-grid {
+  background-image: 
+    linear-gradient(rgba(200, 122, 83, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(16, 185, 129, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Masterful shadows and glows based on paint tints */
+.glow-dali-gold {
+  text-shadow: 0 0 12px rgba(204, 164, 59, 0.4), 0 0 24px rgba(200, 122, 83, 0.25);
+}
+
+.glow-monet-mist {
+  text-shadow: 0 0 12px rgba(94, 84, 142, 0.4), 0 0 24px rgba(30, 58, 58, 0.3);
+}
+
+/* Custom scrollbar matching oil paints */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: #06070a;
+}
+::-webkit-scrollbar-thumb {
+  background: #231942;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3a225d;
+}
+
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.typewriter-cursor {
+  animation: cursor-blink 0.95s step-start infinite;
+}
+
