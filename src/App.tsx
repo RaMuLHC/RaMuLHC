@@ -13,7 +13,8 @@ import {
   ChevronRight,
   ArrowLeft,
   Sparkles,
-  Palette
+  Palette,
+  RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -134,12 +135,34 @@ export default function App() {
   const [activeView, setActiveView] = useState<SubdomainType>('portal');
   const [logs, setLogs] = useState<LabLog[]>(LAB_LOGS);
   
-  // Subdomain Online checker status state
-  const [subdomainStatuses, setSubdomainStatuses] = useState<Record<string, 'checking' | 'online' | 'offline'>>({
-    game: 'checking',
-    work: 'checking',
-    velkora: 'checking' // points to project.ramulab
+  // Subdomain Online checker status state with LocalStorage caching & TTL check (5 mins)
+  const [subdomainStatuses, setSubdomainStatuses] = useState<Record<string, 'checking' | 'online' | 'offline'>>(() => {
+    try {
+      const cached = localStorage.getItem('ramulab_subdomain_statuses_cache');
+      const timeStr = localStorage.getItem('ramulab_subdomain_statuses_time');
+      if (cached && timeStr) {
+        const timestamp = parseInt(timeStr, 10);
+        // Reuse cache if valid (5 minutes TTL = 300000ms) to prevent slamming servers on page loads
+        if (Date.now() - timestamp < 300000) {
+          const parsed = JSON.parse(cached);
+          if (parsed && typeof parsed === 'object' && parsed.game && parsed.work && parsed.velkora) {
+            return parsed;
+          }
+        }
+      }
+    } catch (e) {
+      // Ignored: Fall back to default checking state
+    }
+    return {
+      game: 'checking',
+      work: 'checking',
+      velkora: 'checking'
+    };
   });
+
+  // Track auto-poll count in current session to prevent infinite background load
+  const [totalPollCount, setTotalPollCount] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Light / Dark preference state
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
@@ -148,40 +171,131 @@ export default function App() {
   const [hoverTimerId, setHoverTimerId] = useState<any>(null);
   const [showEasterEgg, setShowEasterEgg] = useState(false);
 
-  // Active Health Checker for individual subdomains
-  useEffect(() => {
+  // Core status checking function with protection parameters
+  const runSecureProbes = async (force: boolean = false) => {
     const urls: Record<string, string> = {
       game: 'https://game.ramulab.com',
       work: 'https://work.ramulab.com',
       velkora: 'https://project.ramulab.com'
     };
 
-    const checkStatus = async (id: string, url: string) => {
+    // Cache verification
+    if (!force) {
+      try {
+        const timeStr = localStorage.getItem('ramulab_subdomain_statuses_time');
+        const cached = localStorage.getItem('ramulab_subdomain_statuses_cache');
+        if (timeStr && cached) {
+          const timestamp = parseInt(timeStr, 10);
+          if (Date.now() - timestamp < 300000) {
+            // Cache is still fresh, do not fetch
+            return;
+          }
+        }
+      } catch (e) { /* ignored */ }
+    }
+
+    setIsRefreshing(true);
+    
+    // Set status to checking if force or cache expired
+    setSubdomainStatuses(prev => {
+      const updated = { ...prev };
+      Object.keys(urls).forEach(id => {
+        updated[id] = 'checking';
+      });
+      return updated;
+    });
+
+    const results: Record<string, 'checking' | 'online' | 'offline'> = {};
+
+    // Check each subdomain sequentially with 500ms delay to spread load (Anti-burst protection)
+    const keys = Object.keys(urls);
+    for (let i = 0; i < keys.length; i++) {
+      const id = keys[i];
+      const url = urls[id];
+
+      // Wait 500ms before each subsequent probe to prevent concurrent spikes
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3500);
-        // Execute request to probe if online
+        const timeoutId = setTimeout(() => controller.abort(), 3500); // Fail fast (3.5s timeout)
+        
         await fetch(url, { mode: 'no-cors', cache: 'no-cache', signal: controller.signal });
         clearTimeout(timeoutId);
-        setSubdomainStatuses(prev => ({ ...prev, [id]: 'online' }));
+        results[id] = 'online';
       } catch (err) {
-        setSubdomainStatuses(prev => ({ ...prev, [id]: 'offline' }));
+        results[id] = 'offline';
+      }
+    }
+
+    // Update state and persistent cache
+    setSubdomainStatuses(results);
+    setIsRefreshing(false);
+
+    try {
+      localStorage.setItem('ramulab_subdomain_statuses_cache', JSON.stringify(results));
+      localStorage.setItem('ramulab_subdomain_statuses_time', Date.now().toString());
+    } catch (e) { /* ignored */ }
+  };
+
+  // Safe orchestrator for status checks
+  useEffect(() => {
+    // Initial load: probe subdomains (if cache is absent or expired)
+    runSecureProbes(false);
+
+    let intervalId: any = null;
+
+    const setupPolling = () => {
+      // Setup dynamic poll with Jitter: base 180 seconds (3 mins) + random 0-15s
+      const baseInterval = 180000;
+      const jitter = Math.floor(Math.random() * 15000);
+      const delay = baseInterval + jitter;
+
+      intervalId = setInterval(() => {
+        // Session Cap: Prevent background loops from going forever. Cap at 6 checks (~18 mins).
+        setTotalPollCount(prevCount => {
+          const nextCount = prevCount + 1;
+          if (nextCount > 6) {
+            if (intervalId) clearInterval(intervalId);
+            return prevCount;
+          }
+          // Perform probe if page is active/visible
+          if (!document.hidden) {
+            runSecureProbes(false);
+          }
+          return nextCount;
+        });
+      }, delay);
+    };
+
+    // Watch visibility to pause background activities completely
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Tab hidden: cancel any scheduled runs immediately to save CPU/Network loads
+        if (intervalId) {
+          clearInterval(intervalId);
+          intervalId = null;
+        }
+      } else {
+        // Tab returned to active view: check instantly if cache expired, and resume polling
+        runSecureProbes(false);
+        if (!intervalId) {
+          setupPolling();
+        }
       }
     };
 
-    // Run probes once on load
-    Object.entries(urls).forEach(([id, url]) => {
-      checkStatus(id, url);
-    });
+    // Initialize regular polling on launch
+    setupPolling();
 
-    // Check periodically every 15 seconds
-    const intervalId = setInterval(() => {
-      Object.entries(urls).forEach(([id, url]) => {
-        checkStatus(id, url);
-      });
-    }, 15000);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    return () => clearInterval(intervalId);
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const handleStyleMouseEnter = () => {
@@ -329,6 +443,29 @@ export default function App() {
                 
                 {/* Specific required customized tagline with typewriter animation */}
                 <TypewriterTagline theme={theme} />
+              </div>
+
+              {/* DDoS Protection & Manual Refresh Dashboard */}
+              <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-3 px-2 text-[10px] sm:text-xs border-y border-teal-500/10 py-3 bg-teal-500/[0.01]">
+                <div className="flex items-center gap-2">
+                  <span className={`w-1.5 h-1.5 rounded-full ${
+                    totalPollCount > 6 ? 'bg-amber-500' : 'bg-emerald-500 animate-ping'
+                  }`} />
+                  <span className={`font-mono uppercase tracking-wider font-semibold select-none ${
+                    theme === 'dark' ? 'text-zinc-500' : 'text-zinc-600'
+                  }`}>
+                    {totalPollCount > 6 ? '🛡️ Protection Active (Idle Saving Mode)' : '🛡️ Live DNS Probes Protected'}
+                  </span>
+                </div>
+                
+                <button
+                  onClick={() => runSecureProbes(true)}
+                  disabled={isRefreshing}
+                  className={`flex items-center gap-1.5 font-mono uppercase tracking-widest font-bold transition-all disabled:opacity-50 select-none bg-teal-500/5 hover:bg-teal-500/10 px-3 py-1.5 rounded-lg border border-teal-500/15 cursor-pointer text-teal-400`}
+                >
+                  <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  {isRefreshing ? 'PROBING...' : 'FORCE REFRESH'}
+                </button>
               </div>
 
               {/* The Three Center-Staged Glowing Portals (Pointing to public subdomains) */}
